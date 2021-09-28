@@ -3,8 +3,9 @@ import os
 import requests
 import json
 import asyncio
+import time
 from lichess_client import APIClient
-from lichess_client.utils.enums import StatusTypes
+from lichess_client.utils.enums import StatusTypes, RequestMethods
 DISCORD_TOKEN = "ODkxNDk5MjMzNjc5NjU5MTA5.YU_PXA.mUiKAwVX4ekR_VAhrEfjeXJe9Xw"
 MY_LICHESS_TOKEN = "lip_bdTUcHlMEnaAgPILaexV"
 
@@ -27,20 +28,21 @@ class LiChess:
         print(response)
         return response.entity.content["challenge"]["url"], response.entity.content["challenge"]["id"]
 
-    async def idk(self, lichess_token):
+    async def time_appropriation(self, lichess_token, game_id, time):
         await self.auth(lichess_token)
         self.lichess_client = APIClient(token=lichess_token)
-        self.lichess_client.challenges.new_method = self.add_time()
 
-    async def add_time(self, game_id: str, time: int):
-        # response = await self._client.request(method=RequestMethods.POST,
-        #                                       url=CHALLENGES_CREATE.format(username=username),
-        #                                       data=data,
-        #                                       headers=headers)
-        # return response
-        # response = requests.post(f"https://lichess.org/api/round/{game_id}/add-time/{time}")
-        # print(response)
-        pass
+        async def add_time(slf):
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            response = await slf._client.request(method=RequestMethods.POST,
+                                                  url=f'api/round/{game_id}/add-time/{time}',
+                                                  headers=headers)
+            print(response)
+
+        self.lichess_client.challenges.new_method = add_time
+        await self.lichess_client.challenges.new_method(self.lichess_client.challenges)
 
 
 class MyClient(discord.Client):
@@ -65,6 +67,7 @@ class MyClient(discord.Client):
                     else:
                         data_obj = {
                             message.author.id: {
+                                "lichess": response,
                                 "name": message.author.name,
                                 "token": message.content
                             }
@@ -83,9 +86,10 @@ class MyClient(discord.Client):
                 if str(message.author.id) in data:
                     print("User Authenticated")
                     lichess_token = data[str(message.author.id)]["token"]
-                    challenge_link, challenge_id = await self.lichess.challenge(lichess_token, "Sleepy Lunatic", 120)
-                    await self.lichess.add_time(challenge_id, 120)
+                    challenge_link, challenge_id = await self.lichess.challenge(lichess_token, "zetapulse", 120)
                     await message.channel.send(f'Link: <{challenge_link}>')
+                    time.sleep(10)
+                    await self.lichess.time_appropriation(lichess_token, challenge_id, 120)
                 else:
                     await message.channel.send(f'{message.author} not authenticated. To authenticate do $init')
 
@@ -96,6 +100,7 @@ class MyClient(discord.Client):
             await message.author.send(content)
         except (Exception,):
             pass
+
 
 client = MyClient()
 client.run(DISCORD_TOKEN)
