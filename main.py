@@ -14,19 +14,12 @@ class LiChess:
         self.lichess_client = None
 
     async def auth(self, lichess_token):
-        """
-        # INSERT CODE HERE
-        response = await self.lichess_client {WHAT FUNCTION GOES HERE TO VALIDATE} https://github.com/amasend/lichess_python_SDK/tree/master/lichess_client/endpoints
-        # Okay now you have a response object, print it out. How do we tell if its GOOD OR BAD?
-        # We want a condition for if the response is GOOD.
-        # What you need to do. Pass in good token, see the object, Pass in bad token, see the object, what differs?
-        if response GOOD:
-            return True
+        self.lichess_client = APIClient(token=lichess_token)
+        response = await self.lichess_client.account.get_my_profile()
+        if response.entity.status == StatusTypes.SUCCESS:
+            return response.entity.content['id']
         else:
             return False
-        """
-
-        pass
 
     async def challenge(self):
         response = await self.lichess_client.challenges.create("ZetaPulse")
@@ -46,7 +39,7 @@ class MyClient(discord.Client):
 
         if isinstance(message.channel, discord.channel.DMChannel) and message.author.name !='Soju🍾':
             if message.content:
-                response = await self.lichess.auth()
+                response = await self.lichess.auth(message.content)
                 # if response.entity.status == StatusTypes.ERROR:
                 #     await self.send_dm(message, "Please send correct Lichess API")
                 # else:
