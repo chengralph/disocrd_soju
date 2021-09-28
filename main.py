@@ -1,14 +1,11 @@
 import discord
-import os
 import requests
 import json
-import asyncio
-import time
 from lichess_client import APIClient
-from lichess_client.utils.enums import StatusTypes, RequestMethods
+from lichess_client.utils.enums import StatusTypes
 DISCORD_TOKEN = "ODkxNDk5MjMzNjc5NjU5MTA5.YU_PXA.mUiKAwVX4ekR_VAhrEfjeXJe9Xw"
 MY_LICHESS_TOKEN = "lip_bdTUcHlMEnaAgPILaexV"
-
+CHALLANGEE = "sleepylunatic"
 
 class LiChess:
     def __init__(self):
@@ -25,24 +22,59 @@ class LiChess:
     async def challenge(self, lichess_token, username: str, time_limit: int):
         await self.auth(lichess_token)
         response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit, time_increment=0)
-        print(response)
-        return response.entity.content["challenge"]["url"], response.entity.content["challenge"]["id"]
+        if response.entity.status == StatusTypes.SUCCESS:
+            self.content_challange = response.entity.content["challenge"]
+            return self.content_challange["url"], self.content_challange["id"]
+        raise Exception
 
-    async def time_appropriation(self, lichess_token, game_id, time):
-        await self.auth(lichess_token)
-        self.lichess_client = APIClient(token=lichess_token)
+    async def time_calculation(self, lichess_token):
+        lichess_id = await self.auth(lichess_token)
+        with open("scores.json", "r+") as json_file:
+            data = json.load(json_file)
+            if lichess_id in data:
+                losses = data[lichess_id][CHALLANGEE]
+                set_time = 120 + (losses * 15)
+                opponent_time = (12 * 60) - (losses * 15) - set_time
+                return set_time, opponent_time
+            else:
+                data_obj = {
+                    lichess_id: {
+                        "sleepylunatic": 0,
+                    }
+                }
+                data.update(data_obj)
+                json_file.seek(0)
+                json.dump(data, json_file, indent=4)
+                json_file.truncate()
+                return 120, 600
 
-        async def add_time(slf):
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-            response = await slf._client.request(method=RequestMethods.POST,
-                                                  url=f'api/round/{game_id}/add-time/{time}',
-                                                  headers=headers)
-            print(response)
+    async def time_appropriation(self, lichess_token, game_id, seconds):
+        headers = {
+            'Authorization': f'Bearer {lichess_token}',
+            'Content-Type': 'application/json'
+        }
 
-        self.lichess_client.challenges.new_method = add_time
-        await self.lichess_client.challenges.new_method(self.lichess_client.challenges)
+        while True:
+            response = requests.post(url=f"https://lichess.org/api/round/{game_id}/add-time/{seconds}",
+                                     headers=headers)
+            if response.ok:
+                print(f"Time Added: {response}")
+                break
+
+    async def get_result(self, lichess_token, game_id):
+        lichess_id = await self.auth(lichess_token)
+        "while True:"
+        response = await self.lichess_client.games.export_one_game(game_id)
+        """
+        if response["status"]:
+            if response["status"] == "win" and response["players"] == "zetapulse":
+                data = json.load(json_file)
+                data_obj[lichess_id]["zetapulse"] += 1 
+                json_file.seek(0)
+                json.dump(data, json_file, indent=4)
+                json_file.truncate()
+                break
+        """
 
 
 class MyClient(discord.Client):
@@ -58,8 +90,8 @@ class MyClient(discord.Client):
 
         if isinstance(message.channel, discord.channel.DMChannel) and message.author.name != 'Soju🍾':
             print(f"---Message from Sender: {message.author.name}---")
-            response = await self.lichess.auth(message.content)
-            if response:
+            lichess_id = await self.lichess.auth(message.content)
+            if lichess_id:
                 with open("tokens.json", "r+") as json_file:
                     data = json.load(json_file)
                     if str(message.author.id) in data:
@@ -67,7 +99,7 @@ class MyClient(discord.Client):
                     else:
                         data_obj = {
                             message.author.id: {
-                                "lichess": response,
+                                "lichess": lichess_id,
                                 "name": message.author.name,
                                 "token": message.content
                             }
@@ -86,12 +118,17 @@ class MyClient(discord.Client):
                 if str(message.author.id) in data:
                     print("User Authenticated")
                     lichess_token = data[str(message.author.id)]["token"]
-                    challenge_link, challenge_id = await self.lichess.challenge(lichess_token, "zetapulse", 120)
-                    await message.channel.send(f'Link: <{challenge_link}>')
-                    time.sleep(10)
-                    await self.lichess.time_appropriation(lichess_token, challenge_id, 120)
+                    try:
+                        set_time, opponent_time = await self.lichess.time_calculation(lichess_token)
+                        challenge_link, challenge_id = await self.lichess.challenge(lichess_token, CHALLANGEE, set_time)
+                        await message.channel.send(f'Link: <{challenge_link}>')
+                        await self.lichess.time_appropriation(lichess_token, challenge_id, opponent_time)
+                        await self.lichess.get_result(lichess_token, challenge_id)
+                    except:
+                        await message.channel.send(f'ERROR')
                 else:
                     await message.channel.send(f'{message.author} not authenticated. To authenticate do $init')
+
 
         print(f'Message from {message.author} [{message.author.id}]: {message.content}')
 
