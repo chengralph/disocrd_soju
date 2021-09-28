@@ -26,11 +26,29 @@ class LiChess:
             return False
         """
 
+        return True
+
+    async def challenge(self, lichess_token, username: str, time_limit: int):
+        # await self.auth(lichess_token)
+        # self.lichess_client = APIClient(token=lichess_token)
+        response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit, time_increment=0)
+        print(response)
+        return response.entity.content["challenge"]["url"], response.entity.content["challenge"]["id"]
+
+    async def idk(self, lichess_token):
+        self.lichess_client = APIClient(token=lichess_token)
+        self.lichess_client.challenges.new_method = self.add_time()
+
+    async def add_time(self, game_id: str, time: int):
+        # response = await self._client.request(method=RequestMethods.POST,
+        #                                       url=CHALLENGES_CREATE.format(username=username),
+        #                                       data=data,
+        #                                       headers=headers)
+        # return response
+        # response = requests.post(f"https://lichess.org/api/round/{game_id}/add-time/{time}")
+        # print(response)
         pass
 
-    async def challenge(self):
-        response = await self.lichess_client.challenges.create("ZetaPulse")
-        print(response)
 
 
 class MyClient(discord.Client):
@@ -44,19 +62,43 @@ class MyClient(discord.Client):
             await message.channel.send(f'DM sent {message.author}')
             await self.send_dm(message, "Please enter your LiChess API: https://lichess.org/account/oauth/token")
 
-        if isinstance(message.channel, discord.channel.DMChannel) and message.author.name !='Soju🍾':
-            if message.content:
-                response = await self.lichess.auth()
-                # if response.entity.status == StatusTypes.ERROR:
-                #     await self.send_dm(message, "Please send correct Lichess API")
-                # else:
-                #     await self.send_dm(message, "Thanks :)")
-                    # with open("tokens.json", "w+") as f:
-                    #     data = json.load(f)
-                    #     print(data)
-                    #     data.update({message.author: message.content})
-                    #     print(data)
-                    #     json.dump(data, f)
+        if isinstance(message.channel, discord.channel.DMChannel) and message.author.name != 'Soju🍾':
+            print(f"---Message from Sender: {message.author.name}---")
+            response = await self.lichess.auth(message.content)
+            if response:
+                with open("tokens.json", "r+") as json_file:
+                    data = json.load(json_file)
+                    if str(message.author.id) in data:
+                        await self.send_dm(message, "Your Lichess Token is already recorded")
+                    else:
+                        data_obj = {
+                            message.author.id: {
+                                "name": message.author.name,
+                                "token": message.content
+                            }
+                        }
+                        data.update(data_obj)
+                        json_file.seek(0)
+                        json.dump(data, json_file, indent=4)
+                        json_file.truncate()
+                        await self.send_dm(message, "Thanks :)")
+            else:
+                await self.send_dm(message, "Please send correct Lichess API")
+
+        if message.content.startswith('$game'):
+            with open("tokens.json", "r") as json_file:
+                data = json.load(json_file)
+                if str(message.author.id) in data:
+                    print("User Authenticated")
+                    lichess_token = data[str(message.author.id)]["token"]
+                    challenge_link, challenge_id = await self.lichess.challenge(lichess_token, "Sleepy Lunatic", 120)
+                    await self.lichess.add_time(challenge_id, 120)
+                    await message.channel.send(f'Link: <{challenge_link}>')
+                else:
+                    await message.channel.send(f'{message.author} not authenticated. To authenticate do $init')
+
+
+
 
         print(f'Message from {message.author} [{message.author.id}]: {message.content}')
 
@@ -65,17 +107,6 @@ class MyClient(discord.Client):
             await message.author.send(content)
         except (Exception,):
             pass
-
-
-
-
-
-#
-# get_or_create_loop().run_until_complete(account())
-# asyncio.run(challenge())
-# asyncio.run(challenge()) # loop is null, create new
-# print(asyncio.get_event_loop().is_closed())
-# print("hi")
 
 client = MyClient()
 client.run(DISCORD_TOKEN)
