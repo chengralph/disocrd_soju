@@ -14,28 +14,21 @@ class LiChess:
         self.lichess_client = None
 
     async def auth(self, lichess_token):
-        """
-        # INSERT CODE HERE
-        response = await self.lichess_client {WHAT FUNCTION GOES HERE TO VALIDATE} https://github.com/amasend/lichess_python_SDK/tree/master/lichess_client/endpoints
-        # Okay now you have a response object, print it out. How do we tell if its GOOD OR BAD?
-        # We want a condition for if the response is GOOD.
-        # What you need to do. Pass in good token, see the object, Pass in bad token, see the object, what differs?
-        if response GOOD:
-            return True
+        self.lichess_client = APIClient(token=lichess_token)
+        response = await self.lichess_client.account.get_my_profile()
+        if response.entity.status == StatusTypes.SUCCESS:
+            return response.entity.content['id']
         else:
             return False
-        """
-
-        return True
 
     async def challenge(self, lichess_token, username: str, time_limit: int):
-        # await self.auth(lichess_token)
-        # self.lichess_client = APIClient(token=lichess_token)
+        await self.auth(lichess_token)
         response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit, time_increment=0)
         print(response)
         return response.entity.content["challenge"]["url"], response.entity.content["challenge"]["id"]
 
     async def idk(self, lichess_token):
+        await self.auth(lichess_token)
         self.lichess_client = APIClient(token=lichess_token)
         self.lichess_client.challenges.new_method = self.add_time()
 
@@ -48,7 +41,6 @@ class LiChess:
         # response = requests.post(f"https://lichess.org/api/round/{game_id}/add-time/{time}")
         # print(response)
         pass
-
 
 
 class MyClient(discord.Client):
@@ -96,9 +88,6 @@ class MyClient(discord.Client):
                     await message.channel.send(f'Link: <{challenge_link}>')
                 else:
                     await message.channel.send(f'{message.author} not authenticated. To authenticate do $init')
-
-
-
 
         print(f'Message from {message.author} [{message.author.id}]: {message.content}')
 
