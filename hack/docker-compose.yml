@@ -1,0 +1,15 @@
+version: "3.7"
+
+services:
+  api:
+    build:
+      context: ../
+    ports:
+      - 8080:8080
+    env_file:
+      - ../env
+    command:
+      - python3 main.py
+    volumes:
+      - ../:/app
+
