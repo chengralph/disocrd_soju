@@ -1,5 +1,5 @@
 import json
-from app.models import Player
+from app.models.models import Player
 
 
 def modelize(player_one: dict, player_two: dict):

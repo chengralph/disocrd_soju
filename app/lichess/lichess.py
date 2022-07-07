@@ -3,7 +3,10 @@ import json
 from lichess_client import APIClient
 from lichess_client.utils.enums import StatusTypes
 import aiohttp
-from app.models import Player
+from app.models.models import Player
+from app.common.log import get_logger
+
+log = get_logger()
 
 
 class LiChess:
@@ -16,10 +19,10 @@ class LiChess:
         self.lichess_client = APIClient(token=lichess_token)
         response = await self.lichess_client.account.get_my_profile()
         if response.entity.status == StatusTypes.SUCCESS:
-            print("Auth Successful")
+            log.info("Auth Successful")
             return response.entity.content['id']
         else:
-            print("Auth Declined")
+            log.info("Auth Declined")
             return False
 
     async def challenge(self, lichess_token, username: str, time_limit: int):
