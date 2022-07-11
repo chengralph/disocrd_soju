@@ -21,24 +21,33 @@ class Game(commands.Cog):
         p1 = Player(**player1)
         p2 = Player(**player2)
         try:
-            if p1.handicap or p2.handicap:
-                base_time, handicap_time = await lichess.time_calculation(p1, p2)
-                game_link, game_id = await lichess.challenge(p1.token, p2.lichess, base_time)
+            if p1.handicap and p2.handicap:
+                game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 600)
                 await message.channel.send(f'Link: <{game_link}>')
-                # Need to add logic for non-handicapped person to add time, p1.token or p2.token
-                if p2.handicap:
-                    await lichess.time_appropriation(p1.token, game_id, handicap_time)
-                elif p1.handicap:
-                    await lichess.time_appropriation(p2.token, game_id, handicap_time)
                 await lichess.get_result(game_id)
+            elif p1.handicap:
+                game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 120)
+                await message.channel.send(f'Link: <{game_link}>')
+                await self.handicap_start(game_id=game_id, handicap_player=p1, stronger_player=p2)
+            elif p2.handicap:
+                game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 120)
+                await message.channel.send(f'Link: <{game_link}>')
+                await self.handicap_start(game_id=game_id, handicap_player=p2, stronger_player=p1)
             else:
                 game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 300)
                 await message.channel.send(f'Link: <{game_link}>')
                 await lichess.get_result(game_id)
         except Exception as err:
-            print(err)
-            await message.channel.send(f'ERROR')
+            log.error(err)
+            await message.channel.send(err)
 
+    async def handicap_start(self, game_id: str, handicap_player: Player, stronger_player: Player):
+        handicap_bonus_time, stronger_bonus_time = await lichess.calculate_bonus_time(handicap_player, stronger_player)
+        await lichess.approriate_time(handicap_player.token, game_id, stronger_bonus_time)
+        log.info(f"Time Added for {stronger_player}")
+        await lichess.approriate_time(stronger_player.token, game_id, handicap_bonus_time)
+        log.info(f"Time Added for {handicap_player}")
+        await lichess.get_result(game_id)
 
 
 def setup(bot):

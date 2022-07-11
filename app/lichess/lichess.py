@@ -1,10 +1,14 @@
-import requests
 import json
+import time
+
+import aiohttp
+import requests
 from lichess_client import APIClient
 from lichess_client.utils.enums import StatusTypes
-import aiohttp
-from app.models.models import Player
+
+from app.aws import dynamodb
 from app.common.log import get_logger
+from app.models.models import Player
 
 log = get_logger()
 
@@ -13,21 +17,33 @@ class LiChess:
     def __init__(self):
         self.lichess_client = None
         self.content_challenge = None
-        self.default_time = 120
 
     async def auth(self, lichess_token):
+        """
+        Authorize Lichess Token
+        @param lichess_token:
+        @return:
+        """
         self.lichess_client = APIClient(token=lichess_token)
         response = await self.lichess_client.account.get_my_profile()
         if response.entity.status == StatusTypes.SUCCESS:
-            log.info("Auth Successful")
+            log.info("Lichess Auth Successful")
             return response.entity.content['id']
         else:
-            log.info("Auth Declined")
+            log.info("Lichess Auth Declined")
             return False
 
     async def challenge(self, lichess_token, username: str, time_limit: int):
+        """
+        Creates Lichess challenge
+        @param lichess_token:
+        @param username:
+        @param time_limit:
+        @return:
+        """
         await self.auth(lichess_token)
-        response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit, time_increment=0)
+        response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit,
+                                                               time_increment=0)
         print(f"Challenge response: {response}")
         if response.entity.status == StatusTypes.SUCCESS:
             print("Challenge")
@@ -35,42 +51,50 @@ class LiChess:
             return self.content_challenge["url"], self.content_challenge["id"]
         raise Exception
 
-    async def time_calculation(self, p1: Player, p2: Player):
-        with open("scores.json", "r+") as json_file:
-            data = json.load(json_file)
-            if p1.handicap and p2.handicap:
-                return 600, 600
+    async def calculate_bonus_time(self, handicap_player: Player, stronger_player: Player):
+        """
+        Calculates the bonus time for handicap player and stronger palyer
+        @param handicap_player:
+        @param stronger_player:
+        @return handicap_bonus_time, stronger_bonus_time:
+        """
+        log.info("Calculate bonus time")
+        scores = dynamodb.get_items("scores")
 
-            if p1.lichess in data:
-                losses = data[p1.lichess][p2.lichess]
-                p1_time = (17 * 60) - (losses * 60)
-                p2_time = self.default_time + (losses * 15)
-                return p2_time, p1_time
-            elif p2.lichess in data:
-                losses = data[p2.lichess][p1.lichess]
-                p2_time = (17 * 60) - (losses * 60)
-                p1_time = self.default_time + (losses * 15)
-                return p1_time, p2_time
-            else:
-                if p1.handicap:
-                    data_obj = {
-                        p2.lichess: {
-                            p1.lichess: 0,
-                        }
-                    }
-                elif p2.handicap:
-                    data_obj = {
-                        p1.lichess: {
-                            p2.lichess: 0,
-                        }
-                    }
-                data.update(data_obj)
-                json_file.seek(0)
-                json.dump(data, json_file, indent=4)
-                json_file.truncate()
-                return self.default_time, 900
+        score = [i for i in scores if
+                 i["handicap_player"] == handicap_player.lichess and
+                 i["stronger_player"] == stronger_player.lichess][0]
 
-    async def time_appropriation(self, lichess_token, game_id, seconds):
+        if score:
+            losses = score["score"]
+            # Equilibrium time is 5min. Stronger player starts at 2min vs Handicap Player at 17min.
+            # Each stronger player loss results in 15 seconds added to stronger_time
+            # and 1 minute subtracted from handicap_time
+            handicap_bonus_time = (12 * 60) - (losses * 60)
+            stronger_bonus_time = losses * 15
+            # Returns handicap_bonus_time, stronger_bonus_time
+            return handicap_bonus_time, stronger_bonus_time
+        else:
+            item = {
+                "handicap_player": handicap_player.lichess,
+                "stronger_player": stronger_player.lichess,
+                "score": 0,
+            }
+            log.info(f'Score initiated and set to 0: {item}')
+            dynamodb.put_item("scores", item)
+            # Equilibrium time is 5min. Stronger player starts at 2min vs Handicap Player at 17min.
+            # Returns handicap_bonus_time, stronger_bonus_time
+            return 12*60, 0
+
+    async def approriate_time(self, lichess_token: str, game_id: str, seconds: int):
+        """
+        Adds time to a player.
+        @param lichess_token:
+        @param game_id:
+        @param seconds:
+        @return:
+        """
+        log.info("Time Appropriation. Adding time async.")
         headers = {
             'Authorization': f'Bearer {lichess_token}',
             'Content-Type': 'application/json'
@@ -79,22 +103,21 @@ class LiChess:
         while True:
             response = requests.post(url=f"https://lichess.org/api/round/{game_id}/add-time/{seconds}",
                                      headers=headers)
+            time.sleep(1)
             if response.ok:
-                print(f"Time Added: {response}")
+                log.info(f"Time Added: {response}")
                 break
 
     async def get_result(self, game_id):
-        print("Getting result")
+        log.info("Getting result")
 
         async with aiohttp.request('get', f'https://lichess.org/api/stream/game/{game_id}') as r:
             async for line in r.content:
                 try:
                     json_data = json.loads(line)
-                    print(json_data)
+                    log.info(json_data)
                     winner = json_data.get("winner", None)
                     if winner:
-                        print(f"Winner was: {winner}")
+                        log.info(f"Winner was: {winner}")
                 except Exception:
                     continue
-
-
