@@ -1,5 +1,7 @@
 import json
-import time
+import functools
+import typing
+import asyncio
 
 import aiohttp
 import requests
@@ -10,7 +12,7 @@ from app.aws import dynamodb
 from app.common.log import get_logger
 from app.models.models import Player
 
-log = get_logger()
+log = get_logger("standard")
 
 
 class LiChess:
@@ -63,16 +65,18 @@ class LiChess:
 
         score = [i for i in scores if
                  i["handicap_player"] == handicap_player.lichess and
-                 i["stronger_player"] == stronger_player.lichess][0]
-
+                 i["stronger_player"] == stronger_player.lichess]
+        log.info(f"Score: {score}")
         if score:
-            losses = score["score"]
+            # losses for stronger player
+            losses = score[0]["score"]
             # Equilibrium time is 5min. Stronger player starts at 2min vs Handicap Player at 17min.
             # Each stronger player loss results in 15 seconds added to stronger_time
             # and 1 minute subtracted from handicap_time
-            handicap_bonus_time = (12 * 60) - (losses * 60)
+            losses = min(losses, 12)
+            handicap_bonus_time = (15 * 60) - (losses * 60)
             stronger_bonus_time = losses * 15
-            # Returns handicap_bonus_time, stronger_bonus_time
+
             return handicap_bonus_time, stronger_bonus_time
         else:
             item = {
@@ -80,13 +84,13 @@ class LiChess:
                 "stronger_player": stronger_player.lichess,
                 "score": 0,
             }
-            log.info(f'Score initiated and set to 0: {item}')
+            log.info(f'Score initiated and set to 0')
             dynamodb.put_item("scores", item)
             # Equilibrium time is 5min. Stronger player starts at 2min vs Handicap Player at 17min.
             # Returns handicap_bonus_time, stronger_bonus_time
             return 12*60, 0
 
-    async def approriate_time(self, lichess_token: str, game_id: str, seconds: int):
+    async def appropriate_time(self, lichess_token: str, game_id: str, seconds: int):
         """
         Adds time to a player.
         @param lichess_token:
@@ -94,7 +98,7 @@ class LiChess:
         @param seconds:
         @return:
         """
-        log.info("Time Appropriation. Adding time async.")
+        log.info("Time Appropriation. Adding time...")
         headers = {
             'Authorization': f'Bearer {lichess_token}',
             'Content-Type': 'application/json'
@@ -103,7 +107,7 @@ class LiChess:
         while True:
             response = requests.post(url=f"https://lichess.org/api/round/{game_id}/add-time/{seconds}",
                                      headers=headers)
-            time.sleep(1)
+            await asyncio.sleep(1)
             if response.ok:
                 log.info(f"Time Added: {response}")
                 break
@@ -121,3 +125,4 @@ class LiChess:
                         log.info(f"Winner was: {winner}")
                 except Exception:
                     continue
+

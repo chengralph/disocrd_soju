@@ -7,7 +7,7 @@ import settings
 from app.common.log import get_logger
 
 intents = discord.Intents.default()
-log = get_logger()
+log = get_logger("standard")
 
 cogs: list = [
     f'app.commands.{cmds}.{cmd[:-3]}'

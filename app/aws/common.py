@@ -3,7 +3,7 @@ import boto3
 import os
 from app.common.log import get_logger
 
-log = get_logger()
+log = get_logger("standard")
 
 
 def get_boto_resource(resource: str, region: str):
@@ -13,7 +13,7 @@ def get_boto_resource(resource: str, region: str):
     @param region:
     @return:
     """
-    log.info("Get Boto3 Client")
+    log.info("Get Boto3 Resource")
     try:
         credentials = get_credentials()
         aws_resource = boto3.resource(
@@ -23,7 +23,7 @@ def get_boto_resource(resource: str, region: str):
             aws_secret_access_key=credentials['SecretAccessKey'],
             aws_session_token=credentials['SessionToken'],
         )
-        log.info("Boto client created")
+        log.info("Boto Resource created")
         return aws_resource
     except TypeError as type_error:
         log.error(type_error)
