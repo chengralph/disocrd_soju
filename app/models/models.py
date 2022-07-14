@@ -3,6 +3,8 @@ from pydantic import BaseModel
 
 class Player(BaseModel):
     lichess: str
-    discord: str
-    token: str
+    discord_id: str
     handicap: bool = False
+    token: str
+    discord: str
+
