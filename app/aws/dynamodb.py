@@ -1,7 +1,8 @@
 """
 DynamoDB Service methods
 """
-
+from botocore.exceptions import ClientError
+from decimal import Decimal
 from app.aws.common import get_boto_resource
 from app.common.log import get_logger
 import typing
@@ -76,7 +77,7 @@ def update_item(item: dict, key: str, value: typing.Any, table: str, region: str
     @param region:
     @return:
     """
-    log.info('Putting Items to DynamoDB Table')
+    log.info('Updating Items in DynamoDB Table')
     dynamodb = get_boto_resource(
         resource='dynamodb',
         region=region)
@@ -89,3 +90,29 @@ def update_item(item: dict, key: str, value: typing.Any, table: str, region: str
         ExpressionAttributeNames={
             '#tkn': key},
         ReturnValues="UPDATED_NEW")
+
+
+def update_score(item: dict, score_change: int, table: str, region: str = "us-east-1"):
+    """
+    Update Item to DynamoDB
+    @param score_change:
+    @param table:
+    @param item:
+    @param region:
+    @return:
+    """
+    log.info('Updating Score in DynamoDB Table')
+    dynamodb = get_boto_resource(
+        resource='dynamodb',
+        region=region)
+    dynamodb_table = dynamodb.Table(table)
+    try:
+        return dynamodb_table.update_item(
+            Key=item,
+            UpdateExpression="SET score = score + :val",
+            ExpressionAttributeValues={
+                ':val': Decimal(str(score_change))},
+            ReturnValues="UPDATED_NEW"
+        )
+    except ClientError as err:
+        log.error(f"Update Score error: {err}")

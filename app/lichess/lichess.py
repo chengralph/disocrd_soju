@@ -1,8 +1,6 @@
 import json
-import functools
-import typing
-import asyncio
-
+import chess.pgn
+import io
 import aiohttp
 import requests
 from lichess_client import APIClient
@@ -45,7 +43,7 @@ class LiChess:
         """
         await self.auth(lichess_token)
         response = await self.lichess_client.challenges.create(username=username, time_limit=time_limit,
-                                                               time_increment=0)
+                                                               time_increment=0, color="random")
         print(f"Challenge response: {response}")
         if response.entity.status == StatusTypes.SUCCESS:
             print("Challenge")
@@ -77,7 +75,7 @@ class LiChess:
             handicap_bonus_time = (15 * 60) - (losses * 60)
             stronger_bonus_time = losses * 15
 
-            return handicap_bonus_time, stronger_bonus_time
+            return handicap_bonus_time, stronger_bonus_time if stronger_bonus_time else 1
         else:
             item = {
                 "handicap_player": handicap_player.lichess,
@@ -88,7 +86,7 @@ class LiChess:
             dynamodb.put_item("scores", item)
             # Equilibrium time is 5min. Stronger player starts at 2min vs Handicap Player at 17min.
             # Returns handicap_bonus_time, stronger_bonus_time
-            return 12*60, 0
+            return 12*60, 1
 
     async def appropriate_time(self, lichess_token: str, game_id: str, seconds: int):
         """
@@ -107,12 +105,11 @@ class LiChess:
         while True:
             response = requests.post(url=f"https://lichess.org/api/round/{game_id}/add-time/{seconds}",
                                      headers=headers)
-            await asyncio.sleep(1)
             if response.ok:
-                log.info(f"Time Added: {response}")
+                log.info(f"Time Added: {response.json()}")
                 break
 
-    async def get_result(self, game_id):
+    async def get_result(self, game_id: str):
         log.info("Getting result")
 
         async with aiohttp.request('get', f'https://lichess.org/api/stream/game/{game_id}') as r:
@@ -123,6 +120,18 @@ class LiChess:
                     winner = json_data.get("winner", None)
                     if winner:
                         log.info(f"Winner was: {winner}")
-                except Exception:
+                except Exception as err:
+                    log.info(f"Exception from async get result: {err}")
                     continue
 
+        game = await self.lichess_client.games.export_one_game(game_id=game_id)
+        log.info(game.entity.content)
+        white = game.entity.content.headers["White"]
+        black = game.entity.content.headers["Black"]
+        game_result = game.entity.content.headers['Result']
+        if game_result[0] == "1":
+            log.info(f"{white} wins!")
+            return white
+        else:
+            log.info(f"{black} wins!")
+            return black

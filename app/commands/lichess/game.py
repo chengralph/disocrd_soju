@@ -29,23 +29,44 @@ class Game(commands.Cog):
         p1 = Player(**player1)
         p2 = Player(**player2)
         try:
-            log.info(f"P1 Handicap: {p1.handicap}\n P2 Handicap {p2.handicap}")
+            log.info(f"P1 Handicap: {p1.handicap} || P2 Handicap {p2.handicap}")
             if p1.handicap and p2.handicap:
                 game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 600)
                 await message.channel.send(f'Link: <{game_link}>')
-                await lichess.get_result(game_id)
+                winning_player = await self.decide_winner(message, p1, p2, game_id)
+                log.info(f"Winning Discord Player: {winning_player}")
             elif p1.handicap:
+                log.info("Player 1 is handicapped")
                 game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 120)
                 await message.channel.send(f'Link: <{game_link}>')
                 await self.handicap_start(game_id=game_id, handicap_player=p1, stronger_player=p2)
+                winning_player = await self.decide_winner(message, p1, p2, game_id)
+                log.info(f"Winning Discord Player: {winning_player}")
+                if winning_player == p1:
+                    item = {
+                        "handicap_player": p1.lichess,
+                        "stronger_player": p2.lichess
+                    }
+                    dynamodb.update_score(item, 1, "scores")
             elif p2.handicap:
+                log.info("Player 2 is handicapped")
                 game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 120)
                 await message.channel.send(f'Link: <{game_link}>')
                 await self.handicap_start(game_id=game_id, handicap_player=p2, stronger_player=p1)
+                winning_player = await self.decide_winner(message, p1, p2, game_id)
+                log.info(f"Winning Discord Player: {winning_player}")
+                if winning_player == p2:
+                    item = {
+                        "handicap_player": p2.lichess,
+                        "stronger_player": p1.lichess
+                    }
+                    dynamodb.update_score(item, 1, "scores")
             else:
                 game_link, game_id = await lichess.challenge(p1.token, p2.lichess, 300)
                 await message.channel.send(f'Link: <{game_link}>')
-                await lichess.get_result(game_id)
+                winning_player = await self.decide_winner(message, p1, p2, game_id)
+                log.info(f"Winning Discord Player: {winning_player}")
+
         except Exception as err:
             log.error(err)
             await message.channel.send(err)
@@ -56,6 +77,7 @@ class Game(commands.Cog):
         @param game_id:
         @param handicap_player:
         @param stronger_player:
+        @param start:
         @return:
         """
         log.info("Start Handicap Time")
@@ -67,7 +89,18 @@ class Game(commands.Cog):
         log.info(results)
         log.info(f"Time Added for {stronger_player}")
         log.info(f"Time Added for {handicap_player}")
-        await lichess.get_result(game_id)
+
+    async def decide_winner(self, message, p1: Player, p2: Player, game_id: str):
+        log.info("Deciding on discord winner")
+        winner = await lichess.get_result(game_id)
+        if p1.lichess == winner.lower():
+            log.info(f"Discord Player1: {p1.discord}")
+            await message.channel.send(f'{p1.discord} won!')
+            return p1
+        else:
+            log.info(f"Discord Player2: {p2.discord}")
+            await message.channel.send(f'{p2.discord} won!')
+            return p2
 
 
 def setup(bot):
